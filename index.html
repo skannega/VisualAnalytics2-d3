@@ -1,0 +1,358 @@
+
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style type="text/css">
+
+body {
+  font-family: 'Proxima Nova', sans-serif;
+}
+
+.g-hed {
+  text-align: left;
+  text-transform: uppercase;
+  font-weight: bold;
+  font-size:22px;
+  margin: 3px 0;
+}
+
+.g-source-bold {
+  text-align: left;
+  font-size:10px;
+  font-weight: bold;
+}
+
+.g-source-reg {
+  text-align: left;
+  font-size:10px;
+}
+
+.g-source {
+  margin: 10px 0;
+}
+
+.g-intro {
+  font-size: 16px;
+  margin: 0px 0px 10px 0px;
+}
+
+.states {
+  fill: #d3d3d3;
+  stroke: #ffffff;
+  stroke-linejoin: round;
+}
+
+.q0-9 { fill: #d9e0f2; }
+.q1-9 { fill: #99b2dc; }
+.q2-9 { fill: #5e8dc9; }
+.q3-9 { fill: #2f5491; }
+.q4-9 { fill: #0e2344; }
+
+#q0-9 { background-color: #d9e0f2; }
+#q1-9 { background-color: #99b2dc; }
+#q2-9 { background-color: #5e8dc9; }
+#q3-9 { background-color: #2f5491; }
+#q4-9 { background-color: #0e2344; }
+
+div.tooltip {
+  position: absolute;
+  left: 75px;
+  text-align: center;
+  height: 12px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: 'Proxima-Nova', sans-serif;
+  background: #FFFFFF;
+  border: 1px solid #989898;
+  pointer-events: none;
+}
+
+.block {
+  width:18%;
+  height: 15px;
+  display:inline-block;
+}
+
+svg .lines {
+    fill: blue;
+    stroke-width: 2px;
+}
+svg .projection {
+  fill: white;
+}
+.mycircle {
+  fill: blue;
+  stroke: red;
+  stroke-width: 5;
+}
+
+</style>
+<head>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.7.0/d3.min.js"></script>
+  <script>
+    newd = d3
+    window.d3 = null
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
+  <script>
+    dold = d3
+    window.d3 = null
+    console.log('v5', newd.version)
+    console.log('v3', dold.version)
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/queue-async/1.0.7/queue.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/1.6.19/topojson.min.js"></script>
+
+</head>
+<body>
+  <h5 class="g-hed"></h5>
+  <p class="g-intro"></p>
+  <div class="g-chart"></div>
+    <div class="legend">
+    <div class="block" id="q0-9"></div>
+    <div class="block" id="q1-9"></div>
+    <div class="block" id="q2-9"></div>
+    <div class="block" id="q3-9"></div>
+    <div class="block" id="q4-9"></div>
+  </div>
+  <div class="g-source"><span class="g-source-bold"></span><span class="g-source-reg"></span></div>
+</body>
+
+<div>
+
+
+<script type="text/javascript">
+
+//Creates tooltip and makes it invisiblae
+var div = dold.select("body").append("div")
+  .attr("class", "tooltip")
+  .style("opacity", 0);
+
+//Sets dimensions
+var margin = {top: 10, left: 10, bottom: 10, right: 10}
+  , width = window.outerWidth
+  , width = width - margin.left - margin.right
+  , mapRatio = .5
+  , height = width * mapRatio;
+
+//Tells the nap what projection to use
+var projection = dold.geo.albersUsa()
+    .scale(width)
+    .translate([width / 2, height / 2]);
+
+//Tells the map how to draw the paths from the projection
+var path = dold.geo.path()
+    .projection(projection);
+
+//Appened svg to page
+var map = dold.select(".g-chart").append("svg")
+  .style('height', height + 'px')
+  .style('width', width + 'px');
+
+//Load the files
+queue()
+    .defer(dold.json, "https://raw.githubusercontent.com/skannega/VisualAnalytics2-d3/master/us-10m.json")
+    .defer(dold.csv, "https://raw.githubusercontent.com/skannega/VisualAnalytics2-d3/master/losses2015_transformed2.csv")
+    .await(ready);
+
+//Moves selection to front
+dold.selection.prototype.moveToFront = function() {
+  return this.each(function(){
+    this.parentNode.appendChild(this);
+  });
+};
+
+//Moves selection to back
+dold.selection.prototype.moveToBack = function() {
+  return this.each(function() {
+  var firstChild = this.parentNode.firstChild;
+    if (firstChild) {
+      this.parentNode.insertBefore(this, firstChild);
+    }
+  });
+};
+
+function ready(error, us, maptemplate) {
+  if (error) throw error;
+
+
+  //Sets color scale
+  var numMedian = dold.median(maptemplate, function(d) { return d.Amount;});
+  var quantize = dold.scale.quantize()
+    .domain([0, numMedian])
+    .range(dold.range(5).map(function(i) { return "q" + i + "-9"; }));
+
+  //Pair data with state id
+  var dataByFIPS = {};
+  maptemplate.forEach(function(d) { dataByFIPS[d.State_Code] = +d.Amount; });
+
+  //Pair state name with state id
+  var stateByFIPS = {};
+  maptemplate.forEach(function(d) { stateByFIPS[d.State_Code] = d.State_Abv; });
+
+  //Appends chart headline
+  dold.select(".g-hed").text("Loss transformation 2015");
+
+  var that = this;
+  //Append states
+  map.append("g")
+    .attr("class", "states")
+    .selectAll("path")
+    .data(topojson.feature(us, us.objects.states).features)
+    .enter().append("path")
+    .attr("d", path)
+    //Color states
+    .attr("class", function(d) { return quantize(dataByFIPS[d.id]); })
+    //Hovers
+    .on("mouseover", function(d) {
+      var sel = dold.select(this);
+      console.log(sel,d,  dold.select(d));
+      sel.moveToFront();
+      dold.select(this).transition().duration(300).style("opacity", 0.8);
+      div.transition().duration(300)
+      .style("opacity", 1)
+      div.text(stateByFIPS[d.id] + ": " + dataByFIPS[d.id])
+      .style("left", (dold.event.pageX) + "px")
+      .style("top", (dold.event.pageY -30) + "px");
+    })
+    .on("mouseout", function() {
+      var sel = dold.select(this);
+        sel.moveToBack();
+      dold.select(this)
+      .transition().duration(300)
+      .style("opacity", 1);
+      div.transition().duration(300)
+      .style("opacity", 0);
+    });
+
+
+
+    //RESPONSIVENESS
+dold.select(window).on('resize', resize);
+
+function resize() {
+
+    var w = dold.select(".g-chart").node().clientWidth;
+    console.log("resized", w);
+
+    // adjust things when the window size changes
+    width = w - margin.left - margin.right;
+    height = width * mapRatio;
+
+    console.log(width)
+    // update projection
+    var newProjection = dold.geo.albersUsa()
+      .scale(width)
+      .translate([width / 2, height / 2]);
+
+    //Update path
+    path = dold.geo.path()
+      .projection(newProjection);
+
+    // resize the map container
+    map
+        .style('width', width + 'px')
+        .style('height', height + 'px');
+
+    // resize the map
+    map.selectAll("path").attr('d', path);
+}
+}
+
+</script></div>
+
+<div>
+  <script type="text/javascript">
+  var damagedata;
+  var div = newd.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+  function loadData()
+  {
+    newd.csv("https://raw.githubusercontent.com/skannega/VisualAnalytics2-d3/master/losses2015_transformed.csv")
+      .then(function(data)
+    {
+      damagedata = data;
+
+var Damage_Desc = newd.nest()
+.key(function(d) { return d.Damage_Descp; })
+.rollup(function(d){ return newd.sum(d,function(g){return g.Amount;})})
+.entries(damagedata);
+Damage_Desc.sort(function(x,y){
+return newd.ascending(x.value,y.value);
+});
+
+xscale=newd.scaleLinear().domain([Damage_Desc[0].value,Damage_Desc[32].value]).range([0,1000]);
+ticks=xscale.ticks(5);
+yscale=newd.scaleLinear();
+      createBarChart(Damage_Desc);
+
+    });
+  }
+function createBarChart(Damage_Desc) {
+var x_axis=newd.axisBottom().scale(xscale);
+x_axis.tickValues(ticks).tickFormat(function(d){return d/1000000+"M" });
+var counter=0;
+    var svg = newd.select("body")
+                .append("svg")
+                .attr("width", 1000)
+                .attr("height", 800)
+    .attr("margin",20);
+    svg.selectAll("g")
+        .data(Damage_Desc)
+        .enter()
+        .append("rect")
+        .attr("x", 225)
+        .attr("y", function(d, i)
+          {
+            return (i+1)*(20+2);
+          })
+        .attr("height",10)
+        .attr("width", function(d, i)
+          {
+ return xscale(d.value);
+
+          })
+        .attr("class", "lines")
+        .on("mouseover", function(d) {
+          console.log("tooltip",);
+          div.transition().duration(300)
+          .style("opacity", 1)
+          div.text(d.key + " : " + d.value)
+          .style("left", (newd.event.pageX) + "px")
+          .style("top", (newd.event.pageY -30) + "px");
+        })
+        .on("mouseout", function() {
+
+        
+          div.transition().duration(300)
+          .style("opacity", 0);
+        });
+    // generate labels
+
+    svg.selectAll("text.Damage_Descp")
+        .data(Damage_Desc)
+        .enter()
+        .append("text")
+        .text(function(d, i)
+          {
+            return d.key;
+          })
+        .attr("x", 0)
+        .attr("y", function(d, i)
+          {
+            return (i+1)*(20+2) + 20;
+          });
+svg.append("line")
+.style("stroke","black")
+.attr("x1",220)
+.attr("y1",22)
+.attr("x2",220)
+.attr("y2",745)
+
+
+svg.append("g").attr("class","axis").attr("transform","translate(220,745)").call(x_axis)
+  }
+  window.onload = loadData;
+  </script>
+</div>
